@@ -26,12 +26,18 @@
  * - Event queue: off
  * - Pin assignment: see defines below
  */
-
+#define RS485_MODE
 #define ECHO_TEST_TXD    (19)
 #define ECHO_TEST_RXD    (21)
 #define ECHO_TEST_PIN_DE (22)
+
+#ifdef RS485_MODE
+#define ECHO_TEST_RTS  (ECHO_TEST_PIN_DE)
+#define ECHO_TEST_CTS  (UART_PIN_NO_CHANGE)
+#else
 #define ECHO_TEST_RTS  (UART_PIN_NO_CHANGE)
 #define ECHO_TEST_CTS  (UART_PIN_NO_CHANGE)
+#endif
 
 #define RX_BUF_SIZE (256)
 #define TX_BUF_SIZE (256)
@@ -72,19 +78,24 @@ int8_t uart_send(uint8_t * pData, uint16_t dataLength)
     {
         return -1;
     }
-    //delayMksActive(150); // with delay OK
-    //vTaskDelay(pdMS_TO_TICKS(20));
+#ifndef RS485_MODE
+    delayMksActive(200); // with delay OK
+#endif
     // Waits while UART sending the packet
     esp_err_t xTxStatus = uart_wait_tx_done(UART_NUM_1, MB_SERIAL_TX_TOUT_TICKS);
     return 0;
 }
 void usartClientSetModeTx(void) {
+#ifndef RS485_MODE
 	ESP_LOGI(DBG_TAG, "setTx");
 	gpio_set_level(ECHO_TEST_PIN_DE, false);
+#endif
 }
 void usartClientSetModeRx(void) {
+#ifndef RS485_MODE
 	ESP_LOGI(DBG_TAG, "setRx");
 	gpio_set_level(ECHO_TEST_PIN_DE, true);
+#endif
 }
 static void rxPoll(size_t xEventSize)
 {
@@ -160,6 +171,7 @@ static void vUartTask(void* pvParameters)
 static void echo_init(void)
 {
     esp_err_t err;
+#ifndef RS485_MODE
 	gpio_config_t io_conf;
 	//disable interrupt
 	io_conf.intr_type = GPIO_PIN_INTR_DISABLE;
@@ -177,6 +189,7 @@ static void echo_init(void)
 		ESP_LOGE(DBG_TAG, "Config GPIO_%d error %d", ECHO_TEST_PIN_DE, err);
 	} else
 		ESP_LOGD(DBG_TAG, "Init DE OK");
+#endif
 
 	int baudRate = 115200;
     /* Configure parameters of an UART driver,
@@ -193,6 +206,11 @@ static void echo_init(void)
     uart_driver_install(UART_NUM_1, RX_BUF_SIZE, TX_BUF_SIZE, 256, &xMbUartQueue, ESP_INTR_FLAG_LEVEL3);
     uart_param_config(UART_NUM_1, &uart_config);
     uart_set_pin(UART_NUM_1, ECHO_TEST_TXD, ECHO_TEST_RXD, ECHO_TEST_RTS, ECHO_TEST_CTS);
+#ifdef RS485_MODE
+    uart_set_mode(UART_NUM_1, UART_MODE_RS485_HALF_DUPLEX);
+    //uart_set_rx_timeout(uart_num, 0);
+    uart_set_rts(uart_num, 1); // receive mode
+#endif
 
     uart_intr_config_t uart_intr = {
         .intr_enable_mask = UART_RXFIFO_FULL_INT_ENA_M
